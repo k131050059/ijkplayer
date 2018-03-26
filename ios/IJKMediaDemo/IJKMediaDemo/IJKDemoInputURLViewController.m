@@ -37,6 +37,7 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    self.textView.text = @"rtmp://live.hkstv.hk.lxdns.com/live/hks";
 }
 
 - (void)onClickPlayButton {
