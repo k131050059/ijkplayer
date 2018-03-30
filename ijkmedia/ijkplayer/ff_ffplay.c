@@ -2945,7 +2945,7 @@ static int stream_component_open(FFPlayer *ffp, int stream_index)
     case AVMEDIA_TYPE_VIDEO:
         is->video_stream = stream_index;
         is->video_st = ic->streams[stream_index];
-
+//首先会打开ffmpeg的解码器，然后通过ffpipeline_open_video_decoder创建IJKFF_Pipenode。
         if (ffp->async_init_decoder) {
             while (!is->initialized_decoder) {
                 SDL_Delay(5);
@@ -3057,6 +3057,7 @@ static int is_realtime(AVFormatContext *s)
     return 0;
 }
 
+//    创建读数据线程read_thread
 /* this thread gets the stream from the disk or the network */
 static int read_thread(void *arg)
 {
@@ -3089,15 +3090,17 @@ static int read_thread(void *arg)
     is->last_audio_stream = is->audio_stream = -1;
     is->last_subtitle_stream = is->subtitle_stream = -1;
     is->eof = 0;
-
+//    1.创建上下文结构体，这个结构体是最上层的结构体，表示输入上下文
     ic = avformat_alloc_context();
     if (!ic) {
         av_log(NULL, AV_LOG_FATAL, "Could not allocate context.\n");
         ret = AVERROR(ENOMEM);
         goto fail;
     }
+    //2设置中断函数，如果出错或者退出，就可以立刻退出
     ic->interrupt_callback.callback = decode_interrupt_cb;
     ic->interrupt_callback.opaque = is;
+    
     if (!av_dict_get(ffp->format_opts, "scan_all_pmts", NULL, AV_DICT_MATCH_CASE)) {
         av_dict_set(&ffp->format_opts, "scan_all_pmts", "1", AV_DICT_DONT_OVERWRITE);
         scan_all_pmts_set = 1;
@@ -3116,6 +3119,7 @@ static int read_thread(void *arg)
 
     if (ffp->iformat_name)
         is->iformat = av_find_input_format(ffp->iformat_name);
+//    3打开文件，主要是探测协议类型，如果是网络文件则创建网络链接等
     err = avformat_open_input(&ic, is->filename, is->iformat, &ffp->format_opts);
     if (err < 0) {
         print_error(is->filename, err);
@@ -3163,6 +3167,7 @@ static int read_thread(void *arg)
                     break;
                 }
             }
+//            4.探测媒体类型，可得到当前文件的封装格式，音视频编码参数等信息
             err = avformat_find_stream_info(ic, opts);
         } while(0);
         ffp_notify_msg1(ffp, FFP_MSG_FIND_STREAM_INFO);
@@ -3268,7 +3273,7 @@ static int read_thread(void *arg)
             set_default_window_size(codecpar->width, codecpar->height, sar);
     }
 #endif
-
+//  5打开视频、音频解码器。在此会打开相应解码器，并创建相应的解码线程。
     /* open the streams */
     if (st_index[AVMEDIA_TYPE_AUDIO] >= 0) {
         stream_component_open(ffp, st_index[AVMEDIA_TYPE_AUDIO]);
@@ -3512,6 +3517,7 @@ static int read_thread(void *arg)
             }
         }
         pkt->flags = 0;
+//            6.读取媒体数据，得到的是音视频分离的解码前数据
         ret = av_read_frame(ic, pkt);
         if (ret < 0) {
             int pb_eof = 0;
@@ -3586,6 +3592,7 @@ static int read_thread(void *arg)
                 av_q2d(ic->streams[pkt->stream_index]->time_base) -
                 (double)(ffp->start_time != AV_NOPTS_VALUE ? ffp->start_time : 0) / 1000000
                 <= ((double)ffp->duration / 1000000);
+            //7.将音视频数据分别送入相应的queue中  重复6、7步，即可不断获取待播放的数据。
         if (pkt->stream_index == is->audio_stream && pkt_in_play_range) {
             packet_queue_put(&is->audioq, pkt);
         } else if (pkt->stream_index == is->video_stream && pkt_in_play_range
@@ -4245,9 +4252,10 @@ static void ffp_show_version_int(FFPlayer *ffp, const char *module, unsigned ver
            (unsigned int)IJKVERSION_GET_MINOR(version),
            (unsigned int)IJKVERSION_GET_MICRO(version));
 }
-
+//当外部调用prepareToPlay启动播放后，ijkplayer内部最终会调用到ffplay.c中的
 int ffp_prepare_async_l(FFPlayer *ffp, const char *file_name)
 {
+    //该方法是启动播放器的入口函数，在此会设置player选项，打开audio output，最重要的是调用stream_open方法。
     assert(ffp);
     assert(!ffp->is);
     assert(file_name);
@@ -4297,7 +4305,12 @@ int ffp_prepare_async_l(FFPlayer *ffp, const char *file_name)
         ffp->vfilters_list[ffp->nb_vfilters - 1] = ffp->vfilter0;
     }
 #endif
-
+//    stream_open主要做了以下几件事情:
+//
+//    创建存放video/audio解码前数据的videoq/audioq
+//    创建存放video/audio解码后数据的pictq/sampq
+//    创建读数据线程read_thread
+//    创建视频渲染线程video_refresh_thread
     VideoState *is = stream_open(ffp, file_name, NULL);
     if (!is) {
         av_log(NULL, AV_LOG_WARNING, "ffp_prepare_async_l: stream_open failed OOM");

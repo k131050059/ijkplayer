@@ -35,14 +35,15 @@
 
 IjkMediaPlayer *ijkmp_ios_create(int (*msg_loop)(void*))
 {
+    //1.创建IjkMediaPlayer对象
     IjkMediaPlayer *mp = ijkmp_create(msg_loop);
     if (!mp)
         goto fail;
-
+    //2.创建图像渲染对象
     mp->ffplayer->vout = SDL_VoutIos_CreateForGLES2();
     if (!mp->ffplayer->vout)
         goto fail;
-
+    //创建平台相关的IJKFF_Pipeline对象，包括视频解码以及音频输出部分
     mp->ffplayer->pipeline = ffpipeline_create_from_ios(mp->ffplayer);
     if (!mp->ffplayer->pipeline)
         goto fail;
@@ -52,6 +53,7 @@ IjkMediaPlayer *ijkmp_ios_create(int (*msg_loop)(void*))
 fail:
     ijkmp_dec_ref_p(&mp);
     return NULL;
+//    简单来说，就是创建播放器对象，完成音视频解码、渲染的准备工作
 }
 
 void ijkmp_ios_set_glview_l(IjkMediaPlayer *mp, IJKSDLGLView *glView)

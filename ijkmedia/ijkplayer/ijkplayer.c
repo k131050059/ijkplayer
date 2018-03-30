@@ -123,7 +123,7 @@ IjkMediaPlayer *ijkmp_create(int (*msg_loop)(void*))
     mp->ffplayer = ffp_create();
     if (!mp->ffplayer)
         goto fail;
-
+    //消息处理函数
     mp->msg_loop = msg_loop;
 
     ijkmp_inc_ref(mp);
